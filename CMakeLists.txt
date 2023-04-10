@@ -30,6 +30,14 @@ include(TestZMQVersion)
 include(ZMQSourceRunChecks)
 include(ZMQSupportMacros)
 
+if(NOT MSVC)
+  find_program(CCACHE_PROGRAM ccache)
+  if(CCACHE_PROGRAM)
+    message(STATUS "Found ccache package... Activating...")
+    set_property(GLOBAL PROPERTY RULE_LAUNCH_COMPILE "${CCACHE_PROGRAM}")
+  endif()
+endif()
+
 find_package(PkgConfig)
 
 # Set lists to empty beforehand as to not accidentally take values from parent
@@ -194,7 +202,7 @@ if(ENABLE_WS)
 
   message(STATUS "Enable WebSocket transport")
 
-  option(WITH_TLS "Use TLS for WSS support" ON)
+  option(WITH_TLS "Use TLS for WSS support" OFF)
   option(WITH_NSS "Use NSS instead of builtin sha1" OFF)
 
   if(WITH_TLS)
@@ -256,7 +264,7 @@ endif()
 # Select curve encryption library, defaults to tweetnacl To use libsodium instead, use --with-libsodium(must be
 # installed) To disable curve, use --disable-curve
 
-option(WITH_LIBSODIUM "Use libsodium instead of built-in tweetnacl" ON)
+option(WITH_LIBSODIUM "Use libsodium instead of built-in tweetnacl" OFF)
 option(WITH_LIBSODIUM_STATIC "Use static libsodium library" OFF)
 option(ENABLE_LIBSODIUM_RANDOMBYTES_CLOSE "Automatically close libsodium randombytes. Not threadsafe without getrandom()" ON)
 option(ENABLE_CURVE "Enable CURVE security" ON)
@@ -502,6 +510,9 @@ else()
     check_struct_has_member("struct sockaddr_un" sun_path "winsock2.h;afunix.h" ZMQ_HAVE_STRUCT_SOCKADDR_UN)
   endif()
 endif()
+
+set(ZMQ_HAVE_IPC 0)
+message(STATUS "Disabling IPC support..")
 
 # ##################### BEGIN condition_variable_t selection
 if(NOT ZMQ_CV_IMPL)
@@ -770,9 +781,9 @@ elseif(CMAKE_SYSTEM_NAME MATCHES "Darwin")
   add_definitions(-D_DARWIN_C_SOURCE)
 endif()
 
-find_package(AsciiDoc)
+#find_package(AsciiDoc)
 
-cmake_dependent_option(WITH_DOC "Build Reference Guide documentation(requires DocBook)" ON "ASCIIDOC_FOUND;NOT WIN32"
+cmake_dependent_option(WITH_DOC "Build Reference Guide documentation(requires DocBook)" OFF "ASCIIDOC_FOUND;NOT WIN32"
                        OFF) # Do not build docs on Windows due to issues with symlinks
 
 if(MSVC)
@@ -1219,8 +1230,6 @@ foreach(source ${cxx-sources})
   list(APPEND sources ${CMAKE_CURRENT_SOURCE_DIR}/src/${source})
 endforeach()
 
-configure_file(${CMAKE_CURRENT_SOURCE_DIR}/src/version.rc.in ${CMAKE_CURRENT_BINARY_DIR}/version.rc)
-
 # Delete any src/platform.hpp left by configure
 file(REMOVE ${CMAKE_CURRENT_SOURCE_DIR}/src/platform.hpp)
 
@@ -1252,7 +1261,7 @@ if(MSVC)
     DEPENDS ${nsis-template})
 endif()
 
-option(WITH_DOCS "Build html docs" ON)
+option(WITH_DOCS "Build html docs" OFF)
 if(WITH_DOCS)
   file(MAKE_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}/doc)
   file(
@@ -1286,7 +1295,7 @@ if(ZMQ_BUILD_FRAMEWORK)
     COMMENT "Perf tools")
 endif()
 
-option(ENABLE_PRECOMPILED "Enable precompiled headers, if possible" ON)
+option(ENABLE_PRECOMPILED "Enable precompiled headers, if possible" OFF)
 if(MSVC AND ENABLE_PRECOMPILED)
   # default for all sources is to use precompiled headers
   foreach(source ${sources})
@@ -1303,7 +1312,7 @@ endif()
 
 # -----------------------------------------------------------------------------
 # output
-option(BUILD_SHARED "Whether or not to build the shared object" ON)
+option(BUILD_SHARED "Whether or not to build the shared object" OFF)
 option(BUILD_STATIC "Whether or not to build the static archive" ON)
 
 if(MSVC)
@@ -1320,15 +1329,15 @@ if(MSVC)
   if(BUILD_SHARED)
     # Whole Program Optimization flags. http://msdn.microsoft.com/en-us/magazine/cc301698.aspx
     #
-    # "Finally, there's the subject of libraries. It's possible to create .LIB 
-    # files with code in its IL form. The linker will happily work with these 
-    # .LIB files. Be aware that these libraries will be tied to a specific 
-    # version of the compiler and linker. If you distribute these libraries, 
-    # you'll need to update them if Microsoft changes the format of IL in a 
+    # "Finally, there's the subject of libraries. It's possible to create .LIB
+    # files with code in its IL form. The linker will happily work with these
+    # .LIB files. Be aware that these libraries will be tied to a specific
+    # version of the compiler and linker. If you distribute these libraries,
+    # you'll need to update them if Microsoft changes the format of IL in a
     # future release."
-    # 
-    # /GL and /LTCG can cause problems when libraries built with different 
-    # versions of compiler are later linked into an executable while /LTCG is active. 
+    #
+    # /GL and /LTCG can cause problems when libraries built with different
+    # versions of compiler are later linked into an executable while /LTCG is active.
     # https://social.msdn.microsoft.com/Forums/vstudio/en-US/5c102025-c254-4f02-9a51-c775c6cc9f4b/problem-with-ltcg-when-building-a-static-library-in-vs2005?forum=vcgeneral
     #
     # For this reason, enable only when building a "Release" (e.g. non-DEBUG) DLL.
@@ -1340,7 +1349,7 @@ if(MSVC)
     endif()
 
     add_library(libzmq SHARED ${sources} ${public_headers} ${html-docs} ${readme-docs}
-                              ${CMAKE_CURRENT_BINARY_DIR}/NSIS.template.in ${CMAKE_CURRENT_BINARY_DIR}/version.rc)
+                              ${CMAKE_CURRENT_BINARY_DIR}/NSIS.template.in)
     if(ENABLE_ANALYSIS)
       enable_vs_guideline_checker(libzmq)
     endif()
@@ -1361,7 +1370,7 @@ if(MSVC)
   endif()
 
   if(BUILD_STATIC)
-    add_library(libzmq-static STATIC ${sources} ${CMAKE_CURRENT_BINARY_DIR}/version.rc)
+    add_library(libzmq-static STATIC ${sources})
     set_target_properties(
       libzmq-static
       PROPERTIES PUBLIC_HEADER "${public_headers}"
@@ -1387,15 +1396,14 @@ else()
 
   if(BUILD_SHARED)
     if(MINGW)
-      add_library(libzmq SHARED ${sources} ${public_headers} ${html-docs} ${readme-docs} ${zmq-pkgconfig}
-                                ${CMAKE_CURRENT_BINARY_DIR}/version.rc)
+      add_library(libzmq SHARED ${sources} ${public_headers} ${html-docs} ${readme-docs} ${zmq-pkgconfig})
     else()
         if (CMAKE_GENERATOR STREQUAL "Xcode")
            add_library(libzmq SHARED ${sources} ${public_headers} ${html-docs} ${readme-docs}
-                                     ${zmq-pkgconfig} ${CMAKE_CURRENT_BINARY_DIR}/version.rc)
+                                     ${zmq-pkgconfig})
         else()
            add_library(libzmq SHARED $<TARGET_OBJECTS:objects> ${public_headers} ${html-docs} ${readme-docs}
-                                     ${zmq-pkgconfig} ${CMAKE_CURRENT_BINARY_DIR}/version.rc)
+                                     ${zmq-pkgconfig})
         endif()
 
     endif()
@@ -1418,15 +1426,14 @@ else()
 
   if(BUILD_STATIC)
     if(MINGW)
-      add_library(libzmq-static STATIC ${sources} ${public_headers} ${html-docs} ${readme-docs} ${zmq-pkgconfig}
-                                       ${CMAKE_CURRENT_BINARY_DIR}/version.rc)
+      add_library(libzmq-static STATIC ${sources} ${public_headers} ${html-docs} ${readme-docs} ${zmq-pkgconfig})
     else()
       if (CMAKE_GENERATOR STREQUAL "Xcode")
         add_library(libzmq-static STATIC ${sources} ${public_headers} ${html-docs} ${readme-docs}
-                                         ${zmq-pkgconfig} ${CMAKE_CURRENT_BINARY_DIR}/version.rc)
+                                         ${zmq-pkgconfig})
       else()
         add_library(libzmq-static STATIC $<TARGET_OBJECTS:objects> ${public_headers} ${html-docs} ${readme-docs}
-                                         ${zmq-pkgconfig} ${CMAKE_CURRENT_BINARY_DIR}/version.rc)
+                                         ${zmq-pkgconfig})
       endif()
     endif()
     if(CMAKE_SYSTEM_NAME MATCHES "QNX")
@@ -1633,11 +1640,7 @@ endif()
 # -----------------------------------------------------------------------------
 # tests
 
-if(${CMAKE_VERSION} VERSION_LESS 3.12.3)
-  option(BUILD_TESTS "Whether or not to build the tests" OFF)
-else()
-  option(BUILD_TESTS "Whether or not to build the tests" ON)
-endif()
+option(BUILD_TESTS "Whether or not to build the tests" OFF)
 
 set(ZMQ_BUILD_TESTS
     ${BUILD_TESTS}

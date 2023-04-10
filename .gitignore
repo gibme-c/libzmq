@@ -34,7 +34,7 @@ lib/
 obj/
 ## Doxygen
 doxygen/
-## Packaging 
+## Packaging
 packaging/nuget/*.nupkg
 
 # Test related build files
@@ -111,7 +111,7 @@ perf/results
 !perf/*.sh
 
 # /doc
-## Generated document files 
+## Generated document files
 doc/*.[137]
 doc/*.html
 doc/*.xml
@@ -126,3 +126,5 @@ zeromq-*.zip
 core
 
 mybuild
+.idea/
+cmake-build-*/
